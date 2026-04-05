@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Claude Usage">
+<meta name="theme-color" content="#080808">
+<link rel="manifest" href="manifest.json">
+<title>Claude Usage Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+:root{
+  --bg:#080808;
+  --bg2:#0f0f0f;
+  --surface:rgba(255,255,255,.055);
+  --surface2:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.08);
+  --border2:rgba(255,255,255,.14);
+  --text:#ededec;
+  --dim:rgba(255,255,255,.42);
+  --muted:rgba(255,255,255,.2);
+  --orange:#cc785c;
+  --blue:#5c9ecc;
+  --purple:#a855f7;
+  --green:#4caf6e;
+  --amber:#f0a952;
+  --red:#e05555;
+  --mono:'IBM Plex Mono',monospace;
+  --ui:'Syne',system-ui,sans-serif;
+  --r:14px;
+  --sat:env(safe-area-inset-top,0px);
+  --sab:env(safe-area-inset-bottom,0px);
+}
+
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--ui);overflow:hidden}
+
+/* ── NOISE OVERLAY ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+  background-size:200px 200px;opacity:.6;
+}
+
+/* ── LAYOUT ── */
+#app{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  padding-top:var(--sat);padding-bottom:var(--sab);
+  z-index:1;
+}
+
+/* ── HEADER ── */
+.header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px 10px;flex-shrink:0;
+  background:linear-gradient(to bottom,rgba(8,8,8,.98),transparent);
+  position:relative;z-index:10;
+}
+.header-title{font-size:19px;font-weight:700;letter-spacing:-.3px;color:var(--text)}
+.header-sub{font-size:10px;font-family:var(--mono);color:var(--dim);margin-top:1px;letter-spacing:.5px}
+.header-actions{display:flex;gap:6px;align-items:center}
+.icon-btn{
+  background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  color:var(--dim);font-size:15px;width:34px;height:34px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:background .15s,color .15s;font-family:var(--mono);
+}
+.icon-btn:active{background:var(--surface2);color:var(--text)}
+
+/* ── TICKER BAR ── */
+.ticker{
+  height:2px;background:var(--border);flex-shrink:0;position:relative;overflow:hidden;
+}
+.ticker-fill{
+  position:absolute;left:0;top:0;height:100%;background:var(--orange);
+  transition:width .5s linear;
+}
+
+/* ── SCROLL AREA ── */
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:12px 14px 24px}
+
+/* ── GRID ── */
+.grid{
+  display:grid;gap:12px;
+  grid-template-columns:repeat(var(--cols,2),1fr);
+}
+
+/* ── CARD ── */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;position:relative;overflow:hidden;
+  transition:border-color .2s;
+}
+.card:active{border-color:var(--border2)}
+.card::after{
+  content:'';position:absolute;inset:0;border-radius:var(--r);
+  background:linear-gradient(135deg,rgba(255,255,255,.04),transparent 60%);
+  pointer-events:none;
+}
+
+.card-label{
+  font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+  color:var(--dim);font-family:var(--mono);margin-bottom:10px;
+  display:flex;align-items:center;gap:6px;
+}
+.card-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* donut mode */
+.card-donut{display:flex;flex-direction:column;align-items:center;gap:8px}
+.donut-wrap{position:relative;width:100%;aspect-ratio:1;max-width:110px}
+.donut-wrap canvas{width:100%!important;height:100%!important}
+.donut-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.donut-pct{font-family:var(--mono);font-size:18px;font-weight:600;line-height:1}
+.donut-label{font-size:9px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+
+.card-numbers{text-align:center}
+.card-used{font-family:var(--mono);font-size:17px;font-weight:600;line-height:1.2}
+.card-of{font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+.card-reset{font-size:9px;color:var(--purple);margin-top:4px;font-family:var(--mono)}
+
+/* bar mode */
+.card-bar-mode .card-used{font-size:22px;margin-bottom:4px}
+.bar-track{height:7px;background:rgba(255,255,255,.08);border-radius:4px;position:relative;overflow:visible;margin-top:8px}
+.bar-fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.34,1.56,.64,1);max-width:100%}
+.bar-pace{
+  position:absolute;top:-4px;width:2px;height:15px;background:var(--purple);
+  border-radius:1px;transform:translateX(-50%);
+}
+
+/* legend */
+.pace-legend{
+  display:flex;align-items:center;gap:5px;margin-top:6px;
+  font-size:9px;color:var(--purple);font-family:var(--mono);
+}
+.pace-legend-dot{width:8px;height:2px;background:var(--purple);border-radius:1px}
+
+/* ── SECTION HEADER ── */
+.section-head{
+  font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
+  font-family:var(--mono);padding:16px 2px 8px;
+}
+
+/* ── STATUS BAR ── */
+.status-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 18px 8px;flex-shrink:0;
+}
+.status-time{font-size:10px;font-family:var(--mono);color:var(--muted)}
+.status-badge{
+  font-size:9px;font-family:var(--mono);padding:2px 7px;
+  border-radius:4px;letter-spacing:.4px;
+}
+.badge-ok{background:rgba(76,175,110,.15);color:var(--green);border:1px solid rgba(76,175,110,.25)}
+.badge-warn{background:rgba(240,169,82,.15);color:var(--amber);border:1px solid rgba(240,169,82,.25)}
+.badge-err{background:rgba(224,85,85,.15);color:var(--red);border:1px solid rgba(224,85,85,.25)}
+.badge-load{background:rgba(255,255,255,.07);color:var(--dim);border:1px solid var(--border);animation:pulse 1.2s ease infinite}
+
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* ── EMPTY STATE ── */
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;padding:40px 32px;text-align:center;
+}
+.empty-icon{font-size:48px;margin-bottom:4px}
+.empty-title{font-size:20px;font-weight:700}
+.empty-sub{font-size:13px;color:var(--dim);line-height:1.5}
+.btn-primary{
+  margin-top:8px;background:var(--orange);color:#fff;border:none;
+  border-radius:10px;padding:12px 28px;font-family:var(--ui);
+  font-size:15px;font-weight:600;cursor:pointer;letter-spacing:-.2px;
+}
+.btn-primary:active{opacity:.8}
+
+/* ── ERROR TOAST ── */
+.toast{
+  position:fixed;bottom:calc(16px + var(--sab));left:14px;right:14px;
+  background:rgba(224,85,85,.12);border:1px solid rgba(224,85,85,.3);
+  border-radius:10px;padding:10px 14px;font-size:12px;color:var(--red);
+  z-index:100;display:none;line-height:1.4;
+  animation:slideUp .25s ease;
+}
+.toast.show{display:block}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── OVERLAY (settings + bookmarklet) ── */
+.overlay{
+  position:fixed;inset:0;z-index:50;
+  background:rgba(0,0,0,.7);backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  display:none;align-items:flex-end;
+  animation:fadeIn .2s ease;
+}
+.overlay.open{display:flex}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+.panel{
+  background:var(--bg2);border:1px solid var(--border2);
+  border-radius:20px 20px 0 0;width:100%;
+  max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:var(--sab);
+  animation:slideUp .3s cubic-bezier(.34,1.56,.64,1);
+}
+
+.panel-handle{
+  width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);
+  margin:12px auto 4px;
+}
+.panel-title{
+  font-size:18px;font-weight:700;padding:10px 20px 16px;
+  border-bottom:1px solid var(--border);
+}
+.panel-body{padding:0 0 8px}
+
+/* settings rows */
+.setting-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;
+}
+.setting-row:active{background:var(--surface)}
+.setting-label{font-size:14px;font-weight:500}
+.setting-value{font-size:13px;color:var(--dim);font-family:var(--mono);display:flex;align-items:center;gap:6px}
+.setting-chevron{font-size:12px;color:var(--muted)}
+.setting-section{
+  font-size:9px;letter-spacing:1.2px;color:var(--muted);font-family:var(--mono);
+  padding:16px 20px 6px;text-transform:uppercase;
+}
+.setting-footer{
+  font-size:11px;color:var(--muted);padding:14px 20px;line-height:1.6;
+}
+
+/* toggle switch */
+.toggle{
+  position:relative;width:44px;height:26px;flex-shrink:0;
+}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{
+  position:absolute;inset:0;background:rgba(255,255,255,.12);
+  border-radius:13px;transition:.2s;cursor:pointer;
+}
+.toggle input:checked + .toggle-track{background:var(--purple)}
+.toggle-thumb{
+  position:absolute;top:3px;left:3px;width:20px;height:20px;
+  background:#fff;border-radius:50%;transition:.2s;
+  box-shadow:0 1px 4px rgba(0,0,0,.4);
+}
+.toggle input:checked ~ .toggle-thumb{transform:translateX(18px)}
+
+/* bookmarklet panel */
+.bm-step{
+  display:flex;gap:12px;padding:14px 20px;
+  border-bottom:1px solid var(--border);align-items:flex-start;
+}
+.bm-num{
+  width:24px;height:24px;border-radius:50%;background:var(--orange);
+  color:#fff;font-size:12px;font-weight:700;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;margin-top:1px;
+}
+.bm-text{font-size:13px;line-height:1.55;color:var(--dim)}
+.bm-text strong{color:var(--text);font-weight:600}
+.bm-code{
+  margin:10px 20px;background:rgba(255,255,255,.04);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:10px;
+  color:var(--dim);word-break:break-all;line-height:1.6;position:relative;
+}
+.copy-btn{
+  margin:0 20px 8px;width:calc(100% - 40px);
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:9px;padding:10px;color:var(--text);font-family:var(--ui);
+  font-size:14px;font-weight:600;cursor:pointer;letter-spacing:-.1px;
+}
+.copy-btn:active{background:rgba(255,255,255,.14)}
+
+/* demo alert */
+.demo-banner{
+  margin:12px 14px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);
+  border-radius:10px;padding:10px 14px;font-size:11px;color:rgba(168,85,247,.9);
+  line-height:1.5;display:none;
+}
+.demo-banner.show{display:block}
+
+/* ── LOADER SKELETON ── */
+.skeleton{
+  background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.05) 75%);
+  background-size:200% 100%;animation:shimmer 1.4s ease infinite;border-radius:6px;
+}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── COL SWITCHER ── */
+.col-pip{display:flex;gap:3px;align-items:center}
+.col-pip span{
+  width:5px;height:5px;border-radius:2px;
+  background:var(--dim);transition:background .15s;
+}
+.col-pip span.on{background:var(--orange)}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div>
+      <div class="header-title">Claude Usage</div>
+      <div class="header-sub" id="hdr-sub">MONITOR</div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="btn-refresh" title="Refresh">↻</button>
+      <button class="icon-btn" id="btn-cols" title="Columns">
+        <div class="col-pip" id="pip">
+          <span class="on"></span><span class="on"></span>
+          <span></span><span></span>
+        </div>
+      </button>
+      <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <!-- TICKER -->
+  <div class="ticker"><div class="ticker-fill" id="ticker-fill"></div></div>
+
+  <!-- STATUS -->
+  <div class="status-bar">
+    <div class="status-time" id="status-time">—</div>
+    <div class="status-badge badge-load" id="status-badge">LOADING</div>
+  </div>
+
+  <!-- DEMO BANNER -->
+  <div class="demo-banner" id="demo-banner">
+    ⚡ Showing demo data. Use the bookmarklet to import real usage from claude.ai
+  </div>
+
+  <!-- SCROLL -->
+  <div class="scroll" id="scroll">
+
+    <!-- EMPTY STATE -->
+    <div class="empty" id="empty" style="display:none">
+      <div class="empty-icon">📊</div>
+      <div class="empty-title">No Usage Data</div>
+      <div class="empty-sub">Set up the bookmarklet to import live stats from claude.ai, or tap Demo to preview the dashboard.</div>
+      <button class="btn-primary" id="btn-setup">Set Up Bookmarklet</button>
+      <button class="btn-primary" style="background:rgba(255,255,255,.1);margin-top:6px;font-size:13px" id="btn-demo">Preview Demo</button>
+    </div>
+
+    <!-- GRID -->
+    <div class="section-head" id="section-limits" style="display:none">USAGE LIMITS</div>
+    <div class="grid" id="grid" style="--cols:2"></div>
+
+    <div class="section-head" id="section-models" style="display:none">MODEL BREAKDOWN</div>
+    <div class="grid" id="grid-models" style="--cols:2"></div>
+
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<!-- ─── SETTINGS OVERLAY ─── -->
+<div class="overlay" id="ov-settings" onclick="closeOverlay('ov-settings')">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-handle"></div>
+    <div class="panel-title">Settings</div>
+    <div class="panel-body">
+
+      <div class="setting-section">Account</div>
+      <div class="setting-row" id="row-orgid">
+        <div class="setting-label">Organization ID</div>
+        <div class="setting-value"><span id="val-orgid">Not set</span> <span class="setting-chevron">›</span></div>
+      </div>
+      <div class="setting-row" id="row-bookmarklet">
+        <div class="setting-label">Import Bookmarklet</div>
+        <div class="setting-value">Setup <span class="setting-chevron">›</span></div>
+      </div>
+
+      <div class="setting-section">Display</div>
+      <div class="setting-row" id="row-style">
+        <div class="setting-label">Chart Style</div>
+        <div class="setting-value"><span id="val-style">Donut</span> <span class="setting-chevron">›</span></div>
+      </div>
+      <div class="setting-row" id="row-cols-s">
+        <div class="setting-label">Columns</div>
+        <div class="setting-value"><span id="val-cols">2</span> <span class="setting-chevron">›</span></div>
+      </div>
+      <div class="setting-row" style="cursor:default">
+        <div class="setting-label">Pace Indicator</div>
+        <label class="toggle">
+          <input type="checkbox" id="tog-pace">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+
+      <div class="setting-section">Refresh</div>
+      <div class="setting-row" id="row-interval">
+        <div class="setting-label">Auto-Refresh</div>
+        <div class="setting-value"><span id="val-interval">5 min</span> <span class="setting-chevron">›</span></div>
+      </div>
+
+      <div class="setting-section">Data</div>
+      <div class="setting-row" id="row-clear" style="color:var(--red)">
+        <div class="setting-label" style="color:var(--red)">Clear All Data</div>
+        <div class="setting-value">⚠ <span class="setting-chevron">›</span></div>
+      </div>
+
+      <div class="setting-footer">
+        All data stored locally on this device. Nothing sent to external servers.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── BOOKMARKLET OVERLAY ─── -->
+<div class="overlay" id="ov-bm" onclick="closeOverlay('ov-bm')">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-handle"></div>
+    <div class="panel-title">📎 Import Bookmarklet</div>
+    <div class="panel-body">
+
+      <div class="bm-step">
+        <div class="bm-num">1</div>
+        <div class="bm-text">Copy the code below, then in <strong>Safari</strong> bookmark any page (tap Share → Add Bookmark).</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">2</div>
+        <div class="bm-text">Open <strong>Bookmarks</strong> in Safari, find the bookmark you just made, and tap <strong>Edit</strong>. Replace the URL with the copied code.</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">3</div>
+        <div class="bm-text">Go to <strong>claude.ai</strong> in Safari while logged in, then tap the bookmarklet from your bookmarks. It will fetch your usage and redirect here automatically.</div>
+      </div>
+
+      <div class="bm-code" id="bm-code-box">Loading...</div>
+      <button class="copy-btn" id="btn-copy-bm">⎘ Copy Bookmarklet Code</button>
+
+      <div class="setting-footer" style="padding-top:0">
+        The bookmarklet runs on claude.ai (where your login cookies already exist), fetches your usage data, and passes it to this app. No passwords or tokens are stored.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PICKER OVERLAY ─── -->
+<div class="overlay" id="ov-picker" onclick="closeOverlay('ov-picker')">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-handle"></div>
+    <div class="panel-title" id="picker-title">Choose</div>
+    <div class="panel-body" id="picker-body"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+var APP = {
+  periods: [],
+  models: [],
+  lastUpdated: null,
+  isDemo: false,
+  settings: {
+    orgId: '',
+    chartStyle: 'donut',  // 'donut' | 'bar'
+    columns: 2,
+    showPace: true,
+    interval: 300   // seconds
+  },
+  _timer: null,
+  _tickTimer: null,
+  _tickStart: null
+};
+
+// ─────────────────────────────────────────────
+//  STORAGE
+// ─────────────────────────────────────────────
+function load() {
+  try {
+    var s = localStorage.getItem('claude_usage_settings');
+    if (s) { var parsed = JSON.parse(s); Object.assign(APP.settings, parsed); }
+    var d = localStorage.getItem('claude_usage_data');
+    if (d) {
+      var data = JSON.parse(d);
+      APP.periods = data.periods || [];
+      APP.models  = data.models  || [];
+      APP.lastUpdated = data.ts ? new Date(data.ts) : null;
+    }
+  } catch(e) {}
+}
+
+function saveSettings() {
+  try { localStorage.setItem('claude_usage_settings', JSON.stringify(APP.settings)); } catch(e) {}
+}
+
+function saveData() {
+  try {
+    localStorage.setItem('claude_usage_data', JSON.stringify({
+      periods: APP.periods,
+      models: APP.models,
+      ts: APP.lastUpdated ? APP.lastUpdated.toISOString() : null
+    }));
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+//  PARSE IMPORT DATA  (from bookmarklet ?import=)
+// ─────────────────────────────────────────────
+function parseImportData(raw) {
+  var out = { periods: [], models: [], orgId: '' };
+  if (!raw) return out;
+
+  try { raw = JSON.parse(raw); } catch(e) { return out; }
+
+  if (raw.orgId) out.orgId = raw.orgId;
+
+  // shape A: { limits: [ {type, used, limit, resets_at} ] }
+  var limits = raw.limits || raw.rate_limits;
+  if (limits && Array.isArray(limits)) {
+    out.periods = limits.map(function(item) {
+      var pt = guessPeriodType(item.type || '');
+      return {
+        type: pt,
+        displayName: periodDisplayName(pt),
+        used: Number(item.used || item.current || 0),
+        limit: Number(item.limit || item.max || 100),
+        resetsAt: item.resets_at || item.reset_time || null,
+        accent: periodAccent(pt)
+      };
+    });
+  }
+
+  // shape B: flat { five_hour_used, five_hour_limit, seven_day_used, seven_day_limit }
+  if (out.periods.length === 0) {
+    var pairs = [
+      ['5h', raw.five_hour_used, raw.five_hour_limit],
+      ['7d', raw.seven_day_used, raw.seven_day_limit],
+      ['5h', raw.fiveHourUsed,   raw.fiveHourLimit],
+      ['7d', raw.sevenDayUsed,   raw.sevenDayLimit],
+    ];
+    pairs.forEach(function(p) {
+      if (p[1] !== undefined && p[2] !== undefined) {
+        var pt = p[0];
+        out.periods.push({
+          type: pt,
+          displayName: periodDisplayName(pt),
+          used: Number(p[1]),
+          limit: Number(p[2]),
+          resetsAt: null,
+          accent: periodAccent(pt)
+        });
+      }
+    });
+  }
+
+  // models
+  var modelList = raw.models || (raw.usage && raw.usage.models);
+  if (modelList && Array.isArray(modelList)) {
+    var total = modelList.reduce(function(s, m) { return s + (m.tokens || 0); }, 0);
+    out.models = modelList.map(function(m) {
+      return {
+        name: friendlyModel(m.model || m.name || ''),
+        tokens: m.tokens || 0,
+        requests: m.requests || 0,
+        fraction: total > 0 ? (m.tokens || 0) / total : 0
+      };
+    }).sort(function(a,b) { return b.tokens - a.tokens; });
+  }
+
+  return out;
+}
+
+function guessPeriodType(s) {
+  s = s.toLowerCase();
+  if (s.indexOf('5') > -1 || s.indexOf('five') > -1 || s.indexOf('hour') > -1) return '5h';
+  if (s.indexOf('7') > -1 || s.indexOf('seven') > -1 || s.indexOf('week') > -1) return '7d';
+  return s || 'custom';
+}
+
+function periodDisplayName(t) {
+  if (t === '5h') return '5-Hour Window';
+  if (t === '7d') return '7-Day Rolling';
+  return t.toUpperCase();
+}
+
+function periodAccent(t) {
+  if (t === '5h') return '#cc785c';
+  if (t === '7d') return '#5c9ecc';
+  return '#a855f7';
+}
+
+function friendlyModel(s) {
+  if (!s) return 'Unknown';
+  s = s.toLowerCase();
+  if (s.indexOf('opus') > -1)    return 'Claude Opus';
+  if (s.indexOf('sonnet') > -1)  return 'Claude Sonnet';
+  if (s.indexOf('haiku') > -1)   return 'Claude Haiku';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function paceFor(period) {
+  if (!APP.settings.showPace || !period.resetsAt) return null;
+  var now = Date.now();
+  var resetMs = new Date(period.resetsAt).getTime();
+  var windowMs = period.type === '5h' ? 5*3600*1000 : 7*24*3600*1000;
+  var startMs = resetMs - windowMs;
+  var elapsed = now - startMs;
+  var frac = Math.max(0, Math.min(elapsed / windowMs, 1));
+  return period.limit * frac;
+}
+
+function statusColor(pct) {
+  if (pct < 60) return '#4caf6e';
+  if (pct < 80) return '#f0a952';
+  return '#e05555';
+}
+
+function fmtNum(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+
+function fmtTime(d) {
+  if (!d) return '—';
+  return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function relTime(isoStr) {
+  if (!isoStr) return '';
+  var diff = new Date(isoStr).getTime() - Date.now();
+  if (diff < 0) return 'expired';
+  var m = Math.round(diff / 60000);
+  if (m < 60) return '↺ ' + m + 'm';
+  var h = Math.floor(m / 60);
+  var rm = m % 60;
+  if (h < 24) return '↺ ' + h + 'h ' + (rm > 0 ? rm + 'm' : '');
+  return '↺ ' + Math.floor(h/24) + 'd';
+}
+
+// ─────────────────────────────────────────────
+//  CANVAS DONUT
+// ─────────────────────────────────────────────
+function drawDonut(canvas, pct, pacePct, color, showPace) {
+  var dpr = window.devicePixelRatio || 1;
+  var size = canvas.parentElement.offsetWidth;
+  canvas.width  = size * dpr;
+  canvas.height = size * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var cx = size / 2, cy = size / 2;
+  var r  = size / 2 - 10;
+  var lw = Math.max(8, size * 0.09);
+
+  // Track
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Fill
+  if (pct > 0.3) {
+    var sa = -Math.PI/2;
+    var ea = sa + (Math.min(pct,100)/100)*Math.PI*2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, sa, ea);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  // Pace tick
+  if (showPace && pacePct !== null && pacePct !== undefined) {
+    var pa = -Math.PI/2 + (Math.min(pacePct,100)/100)*Math.PI*2;
+    var ir = r - lw*0.75;
+    var or = r + lw*0.75;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(pa)*ir, cy + Math.sin(pa)*ir);
+    ctx.lineTo(cx + Math.cos(pa)*or, cy + Math.sin(pa)*or);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(pa)*r, cy + Math.sin(pa)*r, 3.5, 0, Math.PI*2);
+    ctx.fillStyle = '#a855f7';
+    ctx.fill();
+  }
+}
+
+// animate counter
+function animateCounter(el, from, to, duration, suffix) {
+  var start = null;
+  function step(ts) {
+    if (!start) start = ts;
+    var p = Math.min((ts - start)/duration, 1);
+    var ease = p < .5 ? 2*p*p : -1+(4-2*p)*p;
+    el.textContent = Math.round(from + (to-from)*ease) + (suffix||'');
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function render() {
+  var hasData = APP.periods.length > 0;
+  var empty   = document.getElementById('empty');
+  var grid    = document.getElementById('grid');
+  var gridM   = document.getElementById('grid-models');
+  var sl      = document.getElementById('section-limits');
+  var sm      = document.getElementById('section-models');
+  var demoBanner = document.getElementById('demo-banner');
+
+  empty.style.display   = hasData ? 'none' : 'flex';
+  grid.style.display    = hasData ? 'grid' : 'none';
+  sl.style.display      = hasData ? 'block' : 'none';
+
+  demoBanner.className  = APP.isDemo ? 'demo-banner show' : 'demo-banner';
+
+  if (!hasData) {
+    setBadge('—', 'badge-load');
+    setSubtitle('NO DATA');
+    return;
+  }
+
+  var cols = APP.settings.columns;
+  grid.style.setProperty('--cols', cols);
+  gridM.style.setProperty('--cols', cols);
+  updatePip(cols);
+
+  // Usage period cards
+  grid.innerHTML = '';
+  APP.periods.forEach(function(p) {
+    var pct   = Math.min(p.used / p.limit * 100, 100) || 0;
+    var pace  = paceFor(p);
+    var sc    = statusColor(pct);
+    var card  = document.createElement('div');
+    card.className = 'card';
+
+    if (APP.settings.chartStyle === 'bar') {
+      card.innerHTML = barCardHTML(p, pct, pace, sc);
+    } else {
+      card.innerHTML = donutCardHTML(p, pct, sc);
+    }
+
+    grid.appendChild(card);
+
+    if (APP.settings.chartStyle === 'donut') {
+      var cvs = card.querySelector('canvas');
+      if (cvs) {
+        // Small delay so the card is sized
+        setTimeout(function(c, pt, pa, color, sp) {
+          return function() { drawDonut(c, pt, pa, color, sp); };
+        }(cvs, pct, pace, p.accent, APP.settings.showPace), 30);
+
+        // Animate %
+        var pctEl = card.querySelector('.donut-pct');
+        if (pctEl) animateCounter(pctEl, 0, Math.round(pct), 800, '%');
+      }
+    }
+  });
+
+  // Model cards
+  var hasModels = APP.models.length > 0;
+  sm.style.display   = hasModels ? 'block' : 'none';
+  gridM.style.display = hasModels ? 'grid' : 'none';
+  gridM.innerHTML    = '';
+
+  APP.models.forEach(function(m) {
+    var pct = Math.round(m.fraction * 100);
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = [
+      '<div class="card-label"><div class="card-dot" style="background:#5c9ecc"></div>' + m.name + '</div>',
+      '<div class="card-bar-mode">',
+      '  <div class="card-used" style="font-family:var(--mono);font-size:16px">' + fmtNum(m.tokens) + '</div>',
+      '  <div class="card-of">tokens · ' + m.requests + ' req</div>',
+      '  <div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:#5c9ecc"></div></div>',
+      '</div>'
+    ].join('');
+    gridM.appendChild(card);
+  });
+
+  // Status
+  var worstPct = APP.periods.reduce(function(mx, p) {
+    return Math.max(mx, Math.min(p.used/p.limit*100, 100));
+  }, 0);
+  var badge = worstPct >= 80 ? 'badge-err' : worstPct >= 60 ? 'badge-warn' : 'badge-ok';
+  var label = worstPct >= 80 ? 'CRITICAL' : worstPct >= 60 ? 'WARNING' : 'NOMINAL';
+  setBadge(label, badge);
+  if (APP.lastUpdated) {
+    document.getElementById('status-time').textContent = 'Updated ' + fmtTime(APP.lastUpdated);
+    setSubtitle('LAST ' + fmtTime(APP.lastUpdated));
+  }
+}
+
+function donutCardHTML(p, pct, sc) {
+  return [
+    '<div class="card-label">',
+    '  <div class="card-dot" style="background:' + sc + '"></div>',
+    '  ' + p.displayName,
+    '</div>',
+    '<div class="card-donut">',
+    '  <div class="donut-wrap">',
+    '    <canvas></canvas>',
+    '    <div class="donut-center">',
+    '      <div class="donut-pct" style="color:' + p.accent + '">0%</div>',
+    '      <div class="donut-label">used</div>',
+    '    </div>',
+    '  </div>',
+    '  <div class="card-numbers">',
+    '    <div class="card-used" style="color:' + p.accent + '">' + fmtNum(p.used) + '</div>',
+    '    <div class="card-of">of ' + fmtNum(p.limit) + '</div>',
+    (p.resetsAt ? '    <div class="card-reset">' + relTime(p.resetsAt) + '</div>' : ''),
+    (APP.settings.showPace ? '    <div class="pace-legend"><div class="pace-legend-dot"></div> pace</div>' : ''),
+    '  </div>',
+    '</div>'
+  ].join('');
+}
+
+function barCardHTML(p, pct, pace, sc) {
+  var paceW = pace !== null ? Math.min(pace / p.limit * 100, 100) : null;
+  return [
+    '<div class="card-label">',
+    '  <div class="card-dot" style="background:' + sc + '"></div>',
+    '  ' + p.displayName,
+    '</div>',
+    '<div class="card-bar-mode">',
+    '  <div class="card-used" style="color:' + p.accent + '">' + fmtNum(p.used) + '</div>',
+    '  <div class="card-of">of ' + fmtNum(p.limit) + '</div>',
+    '  <div class="bar-track">',
+    '    <div class="bar-fill" style="width:' + pct + '%;background:' + p.accent + '"></div>',
+    (paceW !== null && APP.settings.showPace ? '    <div class="bar-pace" style="left:' + paceW + '%"></div>' : ''),
+    '  </div>',
+    (p.resetsAt ? '  <div class="card-reset" style="margin-top:8px">' + relTime(p.resetsAt) + '</div>' : ''),
+    (APP.settings.showPace ? '  <div class="pace-legend"><div class="pace-legend-dot"></div> expected pace</div>' : ''),
+    '</div>'
+  ].join('');
+}
+
+function setBadge(text, cls) {
+  var el = document.getElementById('status-badge');
+  el.textContent = text;
+  el.className = 'status-badge ' + cls;
+}
+
+function setSubtitle(t) {
+  document.getElementById('hdr-sub').textContent = t;
+}
+
+// ─────────────────────────────────────────────
+//  TICKER
+// ─────────────────────────────────────────────
+function startTicker() {
+  stopTicker();
+  APP._tickStart = Date.now();
+  var fill = document.getElementById('ticker-fill');
+  var interval = APP.settings.interval * 1000;
+
+  APP._tickTimer = setInterval(function() {
+    var elapsed = Date.now() - APP._tickStart;
+    var pct = Math.min(elapsed / interval * 100, 100);
+    fill.style.width = pct + '%';
+    if (pct >= 100) {
+      fill.style.width = '0%';
+      APP._tickStart = Date.now();
+    }
+  }, 500);
+}
+
+function stopTicker() {
+  if (APP._tickTimer) { clearInterval(APP._tickTimer); APP._tickTimer = null; }
+}
+
+// ─────────────────────────────────────────────
+//  AUTO REFRESH
+// ─────────────────────────────────────────────
+function startAutoRefresh() {
+  stopAutoRefresh();
+  if (APP.settings.interval <= 0) return;
+  APP._timer = setInterval(function() {
+    // Only reload if we have an org id (real data mode)
+    if (!APP.isDemo && APP.settings.orgId) showToast('⚡ Tip: Re-run the bookmarklet on claude.ai to refresh data.');
+  }, APP.settings.interval * 1000);
+  startTicker();
+}
+
+function stopAutoRefresh() {
+  if (APP._timer) { clearInterval(APP._timer); APP._timer = null; }
+  stopTicker();
+}
+
+// ─────────────────────────────────────────────
+//  BOOKMARKLET GENERATOR
+// ─────────────────────────────────────────────
+function getBookmarkletCode() {
+  var pwaUrl = window.location.href.split('?')[0];
+  var code = [
+    'javascript:(function(){',
+    'function go(orgId){',
+    '  var endpoints=["/api/organizations/"+orgId+"/rate_limits",',
+    '    "/api/organizations/"+orgId+"/active_entitlements",',
+    '    "/api/organizations/"+orgId+"/limits"];',
+    '  var idx=0;',
+    '  function next(){',
+    '    if(idx>=endpoints.length){alert("Could not fetch usage data.");return;}',
+    '    fetch(endpoints[idx++],{credentials:"include",headers:{"Accept":"application/json"}}).then(function(r){',
+    '      if(!r.ok){next();return;}',
+    '      return r.json();',
+    '    }).then(function(d){',
+    '      if(!d){return;}',
+    '      var out={orgId:orgId,limits:d.limits||d.rate_limits||d};',
+    '      window.location.href="' + pwaUrl + '?import="+encodeURIComponent(JSON.stringify(out));',
+    '    }).catch(next);',
+    '  }',
+    '  next();',
+    '}',
+    'fetch("/api/bootstrap",{credentials:"include"}).then(function(r){return r.json();}).then(function(b){',
+    '  var m=b&&b.account&&b.account.memberships;',
+    '  var id=m&&m[0]&&m[0].organization&&m[0].organization.id;',
+    '  if(id){go(id);}else{',
+    '    var s=prompt("Enter your Organization ID:");',
+    '    if(s)go(s.trim());',
+    '  }',
+    '}).catch(function(){',
+    '  var s=prompt("Enter your Organization ID:");',
+    '  if(s)go(s.trim());',
+    '});',
+    '})()'
+  ].join('');
+  return code;
+}
+
+// ─────────────────────────────────────────────
+//  DEMO DATA
+// ─────────────────────────────────────────────
+function loadDemoData() {
+  var now = new Date();
+  var reset5h  = new Date(now.getTime() + 2.3 * 3600 * 1000);
+  var reset7d  = new Date(now.getTime() + 4.1 * 24 * 3600 * 1000);
+
+  APP.periods = [
+    { type:'5h', displayName:'5-Hour Window', used:68, limit:100, resetsAt:reset5h.toISOString(), accent:'#cc785c' },
+    { type:'7d', displayName:'7-Day Rolling', used:342, limit:1000, resetsAt:reset7d.toISOString(), accent:'#5c9ecc' }
+  ];
+  APP.models = [
+    { name:'Claude Sonnet', tokens:248000, requests:34, fraction:.68 },
+    { name:'Claude Opus',   tokens:87000,  requests:9,  fraction:.24 },
+    { name:'Claude Haiku',  tokens:29000,  requests:15, fraction:.08 }
+  ];
+  APP.lastUpdated = new Date();
+  APP.isDemo = true;
+}
+
+// ─────────────────────────────────────────────
+//  OVERLAY HELPERS
+// ─────────────────────────────────────────────
+function openOverlay(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function showToast(msg, duration) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, duration || 4000);
+}
+
+// ─────────────────────────────────────────────
+//  SETTINGS HELPERS
+// ─────────────────────────────────────────────
+function updateSettingsUI() {
+  document.getElementById('val-orgid').textContent =
+    APP.settings.orgId ? '…' + APP.settings.orgId.slice(-8) : 'Not set';
+  document.getElementById('val-style').textContent =
+    APP.settings.chartStyle === 'bar' ? 'Bar' : 'Donut';
+  document.getElementById('val-cols').textContent = APP.settings.columns;
+  document.getElementById('val-interval').textContent = fmtInterval(APP.settings.interval);
+  document.getElementById('tog-pace').checked = APP.settings.showPace;
+}
+
+function fmtInterval(s) {
+  if (s >= 1800) return '30 min';
+  if (s >= 600)  return '10 min';
+  if (s >= 300)  return '5 min';
+  if (s >= 60)   return '1 min';
+  return 'Manual';
+}
+
+function updatePip(cols) {
+  var pip = document.getElementById('pip');
+  if (!pip) return;
+  var spans = pip.querySelectorAll('span');
+  var on = cols === 1 ? 1 : cols === 2 ? 2 : 4;
+  for (var i = 0; i < spans.length; i++) {
+    spans[i].className = i < on ? 'on' : '';
+  }
+}
+
+function showPicker(title, options, currentVal, onPick) {
+  document.getElementById('picker-title').textContent = title;
+  var body = document.getElementById('picker-body');
+  body.innerHTML = '';
+  options.forEach(function(opt) {
+    var row = document.createElement('div');
+    row.className = 'setting-row';
+    row.style.cursor = 'pointer';
+    row.innerHTML = '<div class="setting-label">' + opt.label + '</div>'
+      + '<div class="setting-value">' + (opt.value === currentVal ? '✓' : '') + '</div>';
+    row.onclick = function() {
+      closeOverlay('ov-picker');
+      onPick(opt.value);
+    };
+    body.appendChild(row);
+  });
+  openOverlay('ov-picker');
+}
+
+// ─────────────────────────────────────────────
+//  EVENTS
+// ─────────────────────────────────────────────
+function bindEvents() {
+  document.getElementById('btn-settings').onclick = function() {
+    updateSettingsUI();
+    openOverlay('ov-settings');
+  };
+
+  document.getElementById('btn-refresh').onclick = function() {
+    if (!APP.isDemo && APP.settings.orgId) {
+      showToast('⚡ Open claude.ai and tap your bookmarklet to refresh data.');
+    } else if (APP.periods.length === 0) {
+      loadDemoData(); render(); APP.isDemo = true;
+    } else {
+      // Animate the refresh
+      document.getElementById('btn-refresh').textContent = '⟳';
+      setTimeout(function() { document.getElementById('btn-refresh').textContent = '↻'; }, 1000);
+      showToast('Data is current as of ' + fmtTime(APP.lastUpdated));
+    }
+  };
+
+  document.getElementById('btn-cols').onclick = function() {
+    var order = [1, 2, 4];
+    var idx = order.indexOf(APP.settings.columns);
+    APP.settings.columns = order[(idx + 1) % order.length];
+    saveSettings();
+    render();
+    updateSettingsUI();
+  };
+
+  document.getElementById('btn-setup').onclick = function() {
+    document.getElementById('bm-code-box').textContent = getBookmarkletCode();
+    openOverlay('ov-bm');
+  };
+
+  document.getElementById('btn-demo').onclick = function() {
+    loadDemoData();
+    render();
+  };
+
+  // Bookmarklet overlay
+  document.getElementById('row-bookmarklet').onclick = function() {
+    closeOverlay('ov-settings');
+    document.getElementById('bm-code-box').textContent = getBookmarkletCode();
+    openOverlay('ov-bm');
+  };
+
+  document.getElementById('btn-copy-bm').onclick = function() {
+    var code = getBookmarkletCode();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(function() {
+        showToast('✓ Copied! Now edit a Safari bookmark and paste as the URL.');
+      });
+    } else {
+      // Fallback for iOS 12 Safari
+      var ta = document.createElement('textarea');
+      ta.value = code;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); showToast('✓ Copied!'); } catch(e) {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  // Settings rows
+  document.getElementById('row-orgid').onclick = function() {
+    var current = APP.settings.orgId || '';
+    var input = prompt('Enter your Organization ID\n(Claude.ai → Settings → Account)', current);
+    if (input !== null) {
+      APP.settings.orgId = input.trim();
+      saveSettings();
+      updateSettingsUI();
+      if (APP.settings.orgId) showToast('✓ Org ID saved. Now use the bookmarklet to import data.');
+    }
+  };
+
+  document.getElementById('row-style').onclick = function() {
+    showPicker('Chart Style', [
+      { label:'Donut Chart', value:'donut' },
+      { label:'Progress Bar', value:'bar' }
+    ], APP.settings.chartStyle, function(v) {
+      APP.settings.chartStyle = v;
+      saveSettings();
+      updateSettingsUI();
+      render();
+    });
+  };
+
+  document.getElementById('row-cols-s').onclick = function() {
+    showPicker('Layout Columns', [
+      { label:'1 Column', value:1 },
+      { label:'2 Columns', value:2 },
+      { label:'4 Columns', value:4 }
+    ], APP.settings.columns, function(v) {
+      APP.settings.columns = v;
+      saveSettings();
+      updateSettingsUI();
+      render();
+    });
+  };
+
+  document.getElementById('row-interval').onclick = function() {
+    showPicker('Auto-Refresh Reminder', [
+      { label:'Every 1 minute',  value:60   },
+      { label:'Every 5 minutes', value:300  },
+      { label:'Every 10 minutes',value:600  },
+      { label:'Every 30 minutes',value:1800 }
+    ], APP.settings.interval, function(v) {
+      APP.settings.interval = v;
+      saveSettings();
+      updateSettingsUI();
+      stopAutoRefresh();
+      startAutoRefresh();
+    });
+  };
+
+  document.getElementById('tog-pace').onchange = function() {
+    APP.settings.showPace = this.checked;
+    saveSettings();
+    render();
+  };
+
+  document.getElementById('row-clear').onclick = function() {
+    if (confirm('Clear all stored data and settings?')) {
+      try {
+        localStorage.removeItem('claude_usage_settings');
+        localStorage.removeItem('claude_usage_data');
+      } catch(e) {}
+      APP.periods = [];
+      APP.models = [];
+      APP.lastUpdated = null;
+      APP.isDemo = false;
+      APP.settings = { orgId:'', chartStyle:'donut', columns:2, showPace:true, interval:300 };
+      closeOverlay('ov-settings');
+      render();
+      showToast('Data cleared.');
+    }
+  };
+
+  // Resize: redraw canvases
+  window.addEventListener('resize', function() {
+    if (APP.settings.chartStyle === 'donut') render();
+  });
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+function init() {
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  }
+
+  load();
+  bindEvents();
+
+  // Handle bookmarklet import via URL param
+  var params = new URLSearchParams(window.location.search);
+  var importRaw = params.get('import');
+  if (importRaw) {
+    try {
+      var parsed = parseImportData(decodeURIComponent(importRaw));
+      if (parsed.orgId && !APP.settings.orgId) {
+        APP.settings.orgId = parsed.orgId;
+        saveSettings();
+      }
+      if (parsed.periods.length > 0) {
+        APP.periods      = parsed.periods;
+        APP.models       = parsed.models;
+        APP.lastUpdated  = new Date();
+        APP.isDemo       = false;
+        saveData();
+        showToast('✓ Usage data imported from claude.ai');
+      }
+    } catch(e) {}
+    // Clean URL
+    history.replaceState({}, '', window.location.pathname);
+  }
+
+  render();
+  startAutoRefresh();
+}
+
+// Wait for fonts + DOM
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
