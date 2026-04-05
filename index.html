@@ -405,7 +405,15 @@ body::before{
       </div>
 
       <div class="setting-section">Data</div>
-      <div class="setting-row" id="row-clear" style="color:var(--red)">
+      <div class="setting-row" id="row-paste">
+        <div class="setting-label">Manual JSON Paste</div>
+        <div class="setting-value">Fallback <span class="setting-chevron">›</span></div>
+      </div>
+      <div class="setting-row" id="row-debug-bm">
+        <div class="setting-label">Debug Bookmarklet</div>
+        <div class="setting-value">Diagnose <span class="setting-chevron">›</span></div>
+      </div>
+      <div class="setting-row" id="row-clear">
         <div class="setting-label" style="color:var(--red)">Clear All Data</div>
         <div class="setting-value">⚠ <span class="setting-chevron">›</span></div>
       </div>
@@ -430,18 +438,77 @@ body::before{
       </div>
       <div class="bm-step">
         <div class="bm-num">2</div>
-        <div class="bm-text">Open <strong>Bookmarks</strong> in Safari, find the bookmark you just made, and tap <strong>Edit</strong>. Replace the URL with the copied code.</div>
+        <div class="bm-text">Open <strong>Bookmarks</strong>, find that bookmark, tap <strong>Edit</strong> and replace the URL with the copied code. Save it as <strong>"Claude Usage"</strong>.</div>
       </div>
       <div class="bm-step">
         <div class="bm-num">3</div>
-        <div class="bm-text">Go to <strong>claude.ai</strong> in Safari while logged in, then tap the bookmarklet from your bookmarks. It will fetch your usage and redirect here automatically.</div>
+        <div class="bm-text">Go to <strong>claude.ai</strong> while logged in → open Bookmarks → tap <strong>Claude Usage</strong>. It fetches your data and redirects here automatically.</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">!</div>
+        <div class="bm-text">If it still says "could not fetch", try the <strong>Debug Bookmarklet</strong> in Settings → it copies raw API data to your clipboard so you can use Manual Paste.</div>
       </div>
 
       <div class="bm-code" id="bm-code-box">Loading...</div>
       <button class="copy-btn" id="btn-copy-bm">⎘ Copy Bookmarklet Code</button>
 
       <div class="setting-footer" style="padding-top:0">
-        The bookmarklet runs on claude.ai (where your login cookies already exist), fetches your usage data, and passes it to this app. No passwords or tokens are stored.</div>
+        Runs on claude.ai where your session already exists. Fetches usage data and passes it to this app. No passwords stored.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MANUAL PASTE OVERLAY ─── -->
+<div class="overlay" id="ov-paste" onclick="closeOverlay('ov-paste')">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-handle"></div>
+    <div class="panel-title">📋 Manual JSON Paste</div>
+    <div class="panel-body">
+      <div class="bm-step">
+        <div class="bm-num">1</div>
+        <div class="bm-text">Run the <strong>Debug Bookmarklet</strong> on claude.ai — it copies raw API data to your clipboard automatically.</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">2</div>
+        <div class="bm-text">Come back here, paste into the box below, and tap Import.</div>
+      </div>
+      <div style="padding:0 20px 12px">
+        <textarea id="paste-area" placeholder="Paste JSON here..." style="
+          width:100%;height:140px;background:rgba(255,255,255,.05);
+          border:1px solid rgba(255,255,255,.12);border-radius:10px;
+          color:#ededec;font-family:'IBM Plex Mono',monospace;font-size:11px;
+          padding:10px;resize:none;outline:none;line-height:1.5;
+        "></textarea>
+      </div>
+      <button class="copy-btn" id="btn-do-paste">⬇ Import Pasted Data</button>
+      <div class="setting-footer" style="padding-top:4px">
+        The debug bookmarklet copies JSON from claude.ai's API. Paste it here as a fallback if the automatic bookmarklet doesn't work.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DEBUG BOOKMARKLET OVERLAY ─── -->
+<div class="overlay" id="ov-debug" onclick="closeOverlay('ov-debug')">
+  <div class="panel" onclick="event.stopPropagation()">
+    <div class="panel-handle"></div>
+    <div class="panel-title">🔍 Debug Bookmarklet</div>
+    <div class="panel-body">
+      <div class="bm-step">
+        <div class="bm-num">1</div>
+        <div class="bm-text">Copy this code and save it as a <strong>second bookmark</strong> in Safari (same steps as before — edit a bookmark URL).</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">2</div>
+        <div class="bm-text">Go to <strong>claude.ai</strong> while logged in and tap this debug bookmark. It copies raw API data to your clipboard and shows an alert.</div>
+      </div>
+      <div class="bm-step">
+        <div class="bm-num">3</div>
+        <div class="bm-text">Come back to this app → Settings → <strong>Manual JSON Paste</strong> → paste the copied data → Import.</div>
+      </div>
+      <div class="bm-code" id="debug-code-box">Loading...</div>
+      <button class="copy-btn" id="btn-copy-debug">⎘ Copy Debug Code</button>
+      <div class="setting-footer" style="padding-top:0">This helps identify what data structure claude.ai actually returns so the app can parse it correctly.</div>
     </div>
   </div>
 </div>
@@ -907,39 +974,146 @@ function stopAutoRefresh() {
 // ─────────────────────────────────────────────
 function getBookmarkletCode() {
   var pwaUrl = window.location.href.split('?')[0];
-  var code = [
-    'javascript:(function(){',
-    'function go(orgId){',
-    '  var endpoints=["/api/organizations/"+orgId+"/rate_limits",',
-    '    "/api/organizations/"+orgId+"/active_entitlements",',
-    '    "/api/organizations/"+orgId+"/limits"];',
-    '  var idx=0;',
-    '  function next(){',
-    '    if(idx>=endpoints.length){alert("Could not fetch usage data.");return;}',
-    '    fetch(endpoints[idx++],{credentials:"include",headers:{"Accept":"application/json"}}).then(function(r){',
-    '      if(!r.ok){next();return;}',
-    '      return r.json();',
-    '    }).then(function(d){',
-    '      if(!d){return;}',
-    '      var out={orgId:orgId,limits:d.limits||d.rate_limits||d};',
-    '      window.location.href="' + pwaUrl + '?import="+encodeURIComponent(JSON.stringify(out));',
-    '    }).catch(next);',
-    '  }',
-    '  next();',
-    '}',
-    'fetch("/api/bootstrap",{credentials:"include"}).then(function(r){return r.json();}).then(function(b){',
-    '  var m=b&&b.account&&b.account.memberships;',
-    '  var id=m&&m[0]&&m[0].organization&&m[0].organization.id;',
-    '  if(id){go(id);}else{',
-    '    var s=prompt("Enter your Organization ID:");',
-    '    if(s)go(s.trim());',
-    '  }',
-    '}).catch(function(){',
-    '  var s=prompt("Enter your Organization ID:");',
-    '  if(s)go(s.trim());',
-    '});',
-    '})()'
-  ].join('');
+  // Comprehensive bookmarklet: tries bootstrap → many endpoints → debug dump fallback
+  var code = 'javascript:(function(){'
+    + 'var PWA="' + pwaUrl + '";'
+    + 'var headers={"Accept":"application/json","Content-Type":"application/json"};'
+    + 'var opts={credentials:"include",headers:headers};'
+
+    // Try to extract org id from multiple places
+    + 'function getOrgId(b){'
+    + '  try{'
+    + '    if(b&&b.account&&b.account.memberships&&b.account.memberships[0])'
+    + '      return b.account.memberships[0].organization.uuid||b.account.memberships[0].organization.id;'
+    + '    if(b&&b.organizations&&b.organizations[0])'
+    + '      return b.organizations[0].uuid||b.organizations[0].id;'
+    + '    var m=window.location.pathname.match(/\\/([0-9a-f-]{36})/);'
+    + '    if(m)return m[1];'
+    + '    var ls=Object.keys(localStorage||{});'
+    + '    for(var i=0;i<ls.length;i++){try{var v=JSON.parse(localStorage[ls[i]]);if(v&&v.org_id)return v.org_id;}catch(e){}}'
+    + '  }catch(e){}'
+    + '  return null;'
+    + '}'
+
+    // Extract usage from any response shape
+    + 'function extract(orgId,d,url){'
+    + '  var out={orgId:orgId,_src:url,limits:[],models:[],raw:d};'
+    // shape: {limits:[...]} or {rate_limits:[...]}
+    + '  var arr=d.limits||d.rate_limits||d.entitlements||d.usage_limits;'
+    + '  if(Array.isArray(arr)&&arr.length>0){'
+    + '    out.limits=arr;return out;'
+    + '  }'
+    // shape: flat {five_hour_used, five_hour_limit, ...}
+    + '  if(d.five_hour_limit||d.fiveHourLimit||d.message_limit_5h){'
+    + '    out.limits=['
+    + '      {type:"five_hour",used:d.five_hour_used||d.fiveHourUsed||d.usage_5h||0,limit:d.five_hour_limit||d.fiveHourLimit||d.message_limit_5h||100},'
+    + '      {type:"seven_day",used:d.seven_day_used||d.sevenDayUsed||d.usage_7d||0,limit:d.seven_day_limit||d.sevenDayLimit||d.message_limit_7d||100}'
+    + '    ];return out;'
+    + '  }'
+    // shape: {usage:{...}}
+    + '  if(d.usage&&(d.usage.five_hour_limit||d.usage.limit||d.usage.limits)){'
+    + '    return extract(orgId,d.usage,url);'
+    + '  }'
+    // shape: top-level object with numeric keys suggesting usage
+    + '  var keys=Object.keys(d);'
+    + '  var usedKey=keys.find(function(k){return k.toLowerCase().indexOf("used")>-1;});'
+    + '  var limKey=keys.find(function(k){return k.toLowerCase().indexOf("limit")>-1;});'
+    + '  if(usedKey&&limKey){'
+    + '    out.limits=[{type:"usage",used:d[usedKey]||0,limit:d[limKey]||100}];'
+    + '    return out;'
+    + '  }'
+    + '  return null;'
+    + '}'
+
+    // Try all endpoints in sequence
+    + 'function tryAll(orgId){'
+    + '  var eps=['
+    + '    "/api/organizations/"+orgId+"/rate_limits",'
+    + '    "/api/organizations/"+orgId+"/usage",'
+    + '    "/api/organizations/"+orgId+"/limits",'
+    + '    "/api/organizations/"+orgId+"/active_entitlements",'
+    + '    "/api/organizations/"+orgId+"/entitlements",'
+    + '    "/api/organizations/"+orgId+"/billing",'
+    + '    "/api/organizations/"+orgId+"/subscription",'
+    + '    "/api/organizations/"+orgId,'
+    + '    "/api/account",'
+    + '    "/api/me"'
+    + '  ];'
+    + '  var results=[];'
+    + '  var done=0;'
+    + '  function check(){'
+    + '    if(done<eps.length)return;'
+    // Try to find a successful result
+    + '    var found=results.find(function(r){return r&&r.limits&&r.limits.length>0;});'
+    + '    if(found){'
+    + '      window.location.href=PWA+"?import="+encodeURIComponent(JSON.stringify(found));'
+    + '      return;'
+    + '    }'
+    // No usage data found — send debug dump so user can paste it
+    + '    var dump=results.filter(Boolean);'
+    + '    var msg="No usage data found in "+eps.length+" endpoints.\\n\\n";'
+    + '    if(dump.length>0){'
+    + '      msg+="Found these responses (copy & use Manual Paste in the app):\\n";'
+    + '      msg+=JSON.stringify(dump[0].raw||dump[0],null,2).slice(0,600);'
+    + '    }else{'
+    + '      msg+="All endpoints returned errors. Are you logged in to claude.ai?";'
+    + '    }'
+    + '    if(confirm(msg+"\\n\\nCopy raw data to clipboard for manual paste?")){'
+    + '      var txt=JSON.stringify({orgId:orgId,_debug:true,responses:dump.map(function(r){return{src:r._src,data:r.raw};})},null,2);'
+    + '      try{navigator.clipboard.writeText(txt);}catch(e){'
+    + '        var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);'
+    + '      }'
+    + '      window.location.href=PWA+"?debug=1";'
+    + '    }'
+    + '  }'
+    + '  eps.forEach(function(ep){'
+    + '    fetch(ep,opts).then(function(r){'
+    + '      if(!r.ok){done++;check();return;}'
+    + '      return r.json().then(function(d){'
+    + '        var ex=extract(orgId,d,ep);'
+    + '        if(ex)results.push(ex);'
+    + '        else results.push({_src:ep,raw:d,limits:[]});'
+    + '        done++;check();'
+    + '      });'
+    + '    }).catch(function(){done++;check();});'
+    + '  });'
+    + '}'
+
+    // Boot: get org id then try all
+    + 'fetch("/api/bootstrap",opts)'
+    + '.then(function(r){return r.json();})'
+    + '.then(function(b){'
+    + '  var id=getOrgId(b);'
+    + '  if(!id){id=prompt("Could not auto-detect Org ID.\\nPaste it here (claude.ai → Settings → Account):");}'
+    + '  if(id)tryAll(id.trim());'
+    + '}).catch(function(){'
+    + '  var id=prompt("Enter your Organization ID (claude.ai → Settings → Account):");'
+    + '  if(id)tryAll(id.trim());'
+    + '});'
+    + '})()';
+  return code;
+}
+
+// Debug bookmarklet — just dumps everything claude.ai exposes
+function getDebugBookmarkletCode() {
+  var pwaUrl = window.location.href.split('?')[0];
+  var code = 'javascript:(function(){'
+    + 'var eps=["/api/bootstrap","/api/account","/api/me","/api/auth/current_user"];'
+    + 'var results={};var done=0;'
+    + 'eps.forEach(function(ep){'
+    + '  fetch(ep,{credentials:"include",headers:{"Accept":"application/json"}})'
+    + '  .then(function(r){return r.json();})'
+    + '  .then(function(d){results[ep]=d;done++;if(done===eps.length)finish();})'
+    + '  .catch(function(e){results[ep]="ERR:"+e;done++;if(done===eps.length)finish();});'
+    + '});'
+    + 'function finish(){'
+    + '  var txt=JSON.stringify(results,null,2);'
+    + '  try{navigator.clipboard.writeText(txt);}catch(e){'
+    + '    var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);'
+    + '  }'
+    + '  alert("Debug info copied to clipboard!\\nPaste it in the app → Settings → Manual Paste to share with support.");'
+    + '}'
+    + '})()';
   return code;
 }
 
@@ -1159,6 +1333,90 @@ function bindEvents() {
     saveSettings();
     render();
   };
+
+  // Manual paste
+  document.getElementById('row-paste').onclick = function() {
+    closeOverlay('ov-settings');
+    document.getElementById('paste-area').value = '';
+    openOverlay('ov-paste');
+  };
+
+  document.getElementById('btn-do-paste').onclick = function() {
+    var raw = document.getElementById('paste-area').value.trim();
+    if (!raw) { showToast('Nothing pasted yet.'); return; }
+    try {
+      var json = JSON.parse(raw);
+      var parsed = parseImportData(raw);
+      // Also try parsing as debug dump
+      if (parsed.periods.length === 0 && json._debug && json.responses) {
+        json.responses.forEach(function(r) {
+          if (parsed.periods.length === 0 && r.data) {
+            var attempt = parseImportData(JSON.stringify({
+              orgId: json.orgId || '',
+              limits: r.data.limits || r.data.rate_limits || r.data.entitlements,
+              _src: r.src
+            }));
+            if (attempt.periods.length > 0) { parsed = attempt; }
+            // Try the raw data directly
+            if (parsed.periods.length === 0) {
+              parsed = parseImportData(JSON.stringify(r.data));
+              if (parsed.periods.length > 0 && json.orgId) parsed.orgId = json.orgId;
+            }
+          }
+        });
+      }
+      if (parsed.orgId && !APP.settings.orgId) {
+        APP.settings.orgId = parsed.orgId;
+        saveSettings();
+      }
+      if (parsed.periods.length > 0) {
+        APP.periods = parsed.periods;
+        APP.models  = parsed.models;
+        APP.lastUpdated = new Date();
+        APP.isDemo = false;
+        saveData();
+        closeOverlay('ov-paste');
+        render();
+        showToast('✓ Data imported successfully!');
+      } else {
+        showToast('⚠ Could not find usage data in pasted JSON. Try the debug bookmarklet.', 5000);
+      }
+    } catch(e) {
+      showToast('⚠ Invalid JSON. Make sure you copied the full output.', 5000);
+    }
+  };
+
+  // Debug bookmarklet
+  document.getElementById('row-debug-bm').onclick = function() {
+    closeOverlay('ov-settings');
+    document.getElementById('debug-code-box').textContent = getDebugBookmarkletCode();
+    openOverlay('ov-debug');
+  };
+
+  document.getElementById('btn-copy-debug').onclick = function() {
+    var code = getDebugBookmarkletCode();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(function() {
+        showToast('✓ Debug code copied! Save it as a Safari bookmark.');
+      });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = code; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand('copy'); showToast('✓ Copied!'); } catch(e){}
+      document.body.removeChild(ta);
+    }
+  };
+
+  // Handle ?debug=1 redirect from bookmarklet
+  if (new URLSearchParams(window.location.search).get('debug') === '1') {
+    history.replaceState({}, '', window.location.pathname);
+    setTimeout(function() {
+      document.getElementById('paste-area').value = '';
+      openOverlay('ov-paste');
+      showToast('Debug data copied to clipboard — paste it below.', 5000);
+    }, 600);
+  }
 
   document.getElementById('row-clear').onclick = function() {
     if (confirm('Clear all stored data and settings?')) {
